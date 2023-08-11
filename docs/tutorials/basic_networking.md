@@ -306,6 +306,103 @@ From a client outside the host, the IP address and port can also be used:
 /_/   \___/\_,_/_/_/_/\_,_/_//_/
 ```
 
+#### Example 2
+
+This example will show why containers running in rootless mode may not have DNS access
+and the importance of the "podman network inspect" command as a first step diagnostic check.
+
+```
+podman pull busybox
+podman run --rm -it busybox nslookup baidu.com
+
+Server:         172.19.16.1
+Address:        172.19.16.1:53
+
+Non-authoritative answer:
+Name:   baidu.com
+Address: 110.242.68.66
+Name:   baidu.com
+Address: 39.156.66.10
+```
+
+This example shows pulling an image called busybox and issuing an nslookup to a known URL.
+The example also features the "--rm" param to automatically remove the container made after running
+and the "-it" param to attach an interactive terminal so we can see the results of the nslookup.
+One of the many defaults happening with this command is the "--network".
+The same results can be seen by running:
+
+```podman run --rm --network podman -it busybox nslookup baidu.com```
+
+If a new network is made and run by the following:
+
+```
+podman network create hello
+podman run --rm --network hello -it busybox nslookup baidu.com
+```
+
+gives:
+
+```;; connection timed out; no servers could be reached ```
+
+**Why did this new network fail when the default worked?**
+
+The answer is in:
+```podman network inspect podman```
+and
+```podman network inspect hello```
+
+The difference is that the "podman" network has a "network_dns_servers" entry and "hello" doesn't.
+The DNS Server entry comes from the hosting network.
+
+```
+[
+     {
+          "name": "podman",
+          "id": "2f259bab93aaaaa2542ba43ef33eb990d0999ee1b9924b557b7be53c0b7a1bb9",
+          "driver": "bridge",
+          "network_interface": "podman0",
+          "created": "2023-08-07T11:57:46.847158607-04:00",
+          "subnets": [
+               {
+                    "subnet": "10.88.0.0/16",
+                    "gateway": "10.88.0.1"
+               }
+          ],
+          "ipv6_enabled": false,
+          "internal": false,
+          "dns_enabled": false,
+          "network_dns_servers": [
+               "172.16.200.95"
+          ],
+          "ipam_options": {
+               "driver": "host-local"
+          }
+     }
+]
+```
+
+Your local DNS server will most likely be different than mine.
+For this example to work for me for a new network, 
+I set the "--dns" param on the "network create" command:
+
+```
+podman network create --dns 172.16.200.95 hello2
+podman run --rm --network hello2 -it busybox nslookup baidu.com
+```
+
+which now shows:
+
+```
+Server:         10.89.2.1
+Address:        10.89.2.1:53
+
+Non-authoritative answer:
+Name:   baidu.com
+Address: 110.242.68.66
+Name:   baidu.com
+Address: 39.156.66.10
+```
+
 ## Communicating between containers and pods
 
 Most users of containers have a decent understanding of how containers communicate
