@@ -187,9 +187,6 @@ build_aarch64_task:
     # Multiarch doesn't depend on buildability in this automation context
     # Docs: ./contrib/cirrus/CIModes.md
     only_if: "$CIRRUS_CRON != 'multiarch'"
-    # Enable labeling of EC2 VMs with cirrus task ID. TODO: This can be
-    # removed when the feature goes mainstream.
-    experimental: true
     ec2_instance: &standard_build_ec2_aarch64
         image: ${VM_IMAGE_NAME}
         type: ${EC2_INST_TYPE}
@@ -275,7 +272,6 @@ validate_aarch64_task:
     only_if: *is_pr
     depends_on:
         - build_aarch64
-    experimental: true  # Enable labeling of EC2 VMs with cirrus task ID
     ec2_instance: *standard_build_ec2_aarch64
     env:
         <<: *stdenvars_aarch64
@@ -599,7 +595,6 @@ windows_smoke_test_task:
         $CIRRUS_BASE_BRANCH !=~ 'v[0-9\.]+-rhel'
     depends_on:
       - alt_build
-    experimental: true  # Enable labeling of EC2 VMs with cirrus task ID
     ec2_instance:
         image: "${WINDOWS_AMI}"
         type: m5zn.metal
@@ -720,7 +715,6 @@ podman_machine_task:
         - remote_integration_test
         - container_integration_test
         - rootless_integration_test
-    experimental: true  # Enable labeling of EC2 VMs with cirrus task ID
     ec2_instance:
         image: "${VM_IMAGE_NAME}"
         type: "${EC2_INST_TYPE}"
@@ -735,10 +729,7 @@ podman_machine_task:
     clone_script: *get_gosrc
     setup_script: *setup
     main_script: *main
-    always: &machine_logs_benchmarks
-      <<: *int_logs_artifacts
-      benchmark_artifacts:
-          path: ./data/*
+    always: *int_logs_artifacts
 
 
 podman_machine_aarch64_task:
@@ -752,7 +743,6 @@ podman_machine_aarch64_task:
         - remote_integration_test
         - container_integration_test
         - rootless_integration_test
-    experimental: true  # Enable labeling of EC2 VMs with cirrus task ID
     ec2_instance:
         <<: *standard_build_ec2_aarch64
     env:
@@ -765,30 +755,7 @@ podman_machine_aarch64_task:
     clone_script: *get_gosrc_aarch64
     setup_script: *setup
     main_script: *main
-    always: *machine_logs_benchmarks
-
-
-bench_stuff_task:
-    name: Record machine benchmarks
-    alias: bench_stuff
-    # Only run on merge and never for cirrus-cron.
-    only_if: $CIRRUS_BRANCH == 'main' && $CIRRUS_CRON == ''
-    depends_on:
-        - podman_machine
-        - podman_machine_aarch64
-    gce_instance: *standardvm
-    env:
-        <<: *stdenvars
-        PR: podman run -it --rm -v /tmp/data:/tmp/data:Z -w /tmp/data
-        GACJSON: ENCRYPTED[acd4a8bd843dab6dd135c379a2819546187fd2c7ce43e5839c6db4c798ed652f5b456f5d1716afef662554ee94e098ee]
-    clone_script: &noop mkdir -p $CIRRUS_WORKING_DIR
-    script:
-        - mkdir /tmp/data
-        # Download benchmark.env and benchmark.csv from podman-machine tasks
-        - $PR quay.io/libpod/ccia $CIRRUS_BUILD_ID benchmark/data
-        - podman secret create --env GACJSON GACJSON
-        # Parse and upload benchmark data to GCE firestore database
-        - $PR --secret GACJSON -e GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/GACJSON quay.io/libpod/bench_stuff ./$CIRRUS_BUILD_ID
+    always: *int_logs_artifacts
 
 
 # Always run subsequent to integration tests.  While parallelism is lost
@@ -819,7 +786,6 @@ local_system_test_aarch64_task: &local_system_test_task_aarch64
     depends_on:
         - build_aarch64
         - unit_test
-    experimental: true  # Enable labeling of EC2 VMs with cirrus task ID
     ec2_instance: *standard_build_ec2_aarch64
     env:
         <<: *stdenvars_aarch64
@@ -1052,7 +1018,7 @@ meta_task:
         GCPJSON: ENCRYPTED[3a198350077849c8df14b723c0f4c9fece9ebe6408d35982e7adf2105a33f8e0e166ed3ed614875a0887e1af2b8775f4]
         GCPNAME: ENCRYPTED[2f9738ef295a706f66a13891b40e8eaa92a89e0e87faf8bed66c41eca72bf76cfd190a6f2d0e8444c631fdf15ed32ef6]
         GCPPROJECT: libpod-218412
-    clone_script: *noop
+    clone_script: &noop mkdir -p "$CIRRUS_WORKING_DIR"
     script: /usr/local/bin/entrypoint.sh
 
 
